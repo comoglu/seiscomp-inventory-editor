@@ -144,12 +144,19 @@ class SensorTab(QWidget):
         
     def set_current_element(self, element: Optional[ET.Element]):
         """Set current sensor element and populate fields"""
+        print("\n=== Sensor Tab Debug ===")
+        print(f"Setting sensor element: {element is not None}")
+
         self.current_element = element
         if element is None:
             return
             
         # Get sensor data
         data = self.inventory_model.get_sensor_data(element)
+        print(f"Sensor data loaded:")
+        print(f"- Name: {data.name}")
+        print(f"- Serial Number: {data.serialNumber}")  # Debug serial number
+        print(f"- Model: {data.model}")
         
         # Populate fields
         self.sensor_name.setText(data.name)

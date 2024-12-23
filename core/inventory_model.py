@@ -104,20 +104,28 @@ class InventoryModel:
         
     def load_inventory(self) -> None:
         """Load sensor and datalogger mappings"""
+        print("\n=== Loading Inventory Debug ===")
+        print("Loading sensors and dataloggers...")
+        print("=======================\n")
         self.sensor_map.clear()
         self.datalogger_map.clear()
-        
-        # Map sensors by their serial numbers
+        # Debug sensor mapping
         for sensor in self.get_sensors():
+            serial = self.xml_handler.get_element_text(sensor, 'serialNumber')
             name = sensor.get('name', '')
-            if name:
-                self.sensor_map[name] = sensor
-                
-        # Map dataloggers by their serial numbers
+            print(f"Found sensor - Name: {name}, Serial: {serial}")
+            if serial:
+                self.sensor_map[serial] = sensor
+        
+        # Debug datalogger mapping
         for datalogger in self.get_dataloggers():
+            serial = self.xml_handler.get_element_text(datalogger, 'serialNumber')
             name = datalogger.get('name', '')
-            if name:
-                self.datalogger_map[name] = datalogger
+            print(f"Found datalogger - Name: {name}, Serial: {serial}")
+            if serial:
+                self.datalogger_map[serial] = datalogger
+                
+        print("=======================\n")
 
     def get_location_data(self, element: ET.Element) -> LocationData:
         """Extract location data from element"""
@@ -171,10 +179,24 @@ class InventoryModel:
             return []
         return self.xml_handler.get_dataloggers()
     
+    def get_all_streams(self) -> List[ET.Element]:
+        """Get all stream elements from the inventory"""
+        if not self.xml_handler.root:
+            return []
+        return self.xml_handler.root.findall('.//sc3:stream', self.ns)
+
     def get_stream_data(self, element: ET.Element) -> StreamData:
-        datalogger_ref = element.get('datalogger', '')
-        sensor_ref = element.get('sensor', '')
         """Extract stream data from element"""
+        print("\n=== Stream Data Debug ===")
+        
+        # Get serial numbers
+        sensor_serial = self.xml_handler.get_element_text(element, 'sensorSerialNumber')
+        datalogger_serial = self.xml_handler.get_element_text(element, 'dataloggerSerialNumber')
+        
+        print(f"Found serials in stream:")
+        print(f"- Sensor: {sensor_serial}")
+        print(f"- Datalogger: {datalogger_serial}")
+        
         return StreamData(
             code=element.get('code', ''),
             start=self.xml_handler.get_element_text(element, 'start'),
@@ -185,12 +207,11 @@ class InventoryModel:
             gain=self.xml_handler.get_element_text(element, 'gain'),
             gainFrequency=self.xml_handler.get_element_text(element, 'gainFrequency'),
             gainUnit=self.xml_handler.get_element_text(element, 'gainUnit'),
-            sampleRate=self.xml_handler.get_element_text(element, 'sampleRate'),
+            flags=self.xml_handler.get_element_text(element, 'flags'),
             sampleRateNumerator=self.xml_handler.get_element_text(element, 'sampleRateNumerator'),
             sampleRateDenominator=self.xml_handler.get_element_text(element, 'sampleRateDenominator'),
-            sensor_ref=sensor_ref,
-            datalogger_ref=datalogger_ref,
-            flags=self.xml_handler.get_element_text(element, 'flags')
+            sensor_serialnumber=sensor_serial,
+            datalogger_serialnumber=datalogger_serial
         )
 
     def get_sensor_by_serial(self, serial: str) -> Optional[ET.Element]:
@@ -231,12 +252,31 @@ class InventoryModel:
     
     def get_sensor_data(self, element: ET.Element) -> SensorData:
         """Extract sensor data from element"""
-        data = SensorData(
+        print("\n=== Getting Sensor Data ===")
+        
+        # First try to get the serial directly
+        serial = self.xml_handler.get_element_text(element, 'serialNumber')
+        print(f"Direct serial number: {serial}")
+        
+        # If no serial found, try to find the parent stream's serial
+        if not serial:
+            # Walk up the tree to find parent stream
+            parent = element
+            while parent is not None:
+                if parent.tag.endswith('stream'):
+                    serial = self.xml_handler.get_element_text(parent, 'sensorSerialNumber')
+                    print(f"Found serial from parent stream: {serial}")
+                    break
+                parent = parent.getparent() if hasattr(parent, 'getparent') else None
+        
+        print(f"Final sensor serial number: {serial}")
+        
+        return SensorData(
             name=element.get('name', ''),
             type=self.xml_handler.get_element_text(element, 'type'),
             model=self.xml_handler.get_element_text(element, 'model'),
             manufacturer=self.xml_handler.get_element_text(element, 'manufacturer'),
-            serialNumber=self.xml_handler.get_element_text(element, 'serialNumber'),
+            serialNumber=serial,
             response=self.xml_handler.get_element_text(element, 'response'),
             unit=self.xml_handler.get_element_text(element, 'unit'),
             lowFrequency=self.xml_handler.get_element_text(element, 'lowFrequency'),
@@ -244,9 +284,8 @@ class InventoryModel:
             calibrationDate=self.xml_handler.get_element_text(element, 'calibrationDate'),
             calibrationScale=self.xml_handler.get_element_text(element, 'calibrationScale')
         )
-        return data
 
-    
+   
     def update_sensor(self, element: ET.Element, data: Dict[str, str]) -> bool:
         """Update sensor element with data"""
         if data['name']:
@@ -278,19 +317,38 @@ class InventoryModel:
     
     def get_datalogger_data(self, element: ET.Element) -> DataloggerData:
         """Extract datalogger data from element"""
-        data = DataloggerData(
+        print("\n=== Getting Datalogger Data ===")
+        
+        # First try to get the serial directly
+        serial = self.xml_handler.get_element_text(element, 'serialNumber')
+        print(f"Direct serial number: {serial}")
+        
+        # If no serial found, try to find the parent stream's serial
+        if not serial:
+            # Walk up the tree to find parent stream
+            parent = element
+            while parent is not None:
+                if parent.tag.endswith('stream'):
+                    serial = self.xml_handler.get_element_text(parent, 'dataloggerSerialNumber')
+                    print(f"Found serial from parent stream: {serial}")
+                    break
+                parent = parent.getparent() if hasattr(parent, 'getparent') else None
+        
+        print(f"Final datalogger serial number: {serial}")
+        
+        return DataloggerData(
             name=element.get('name', ''),
             type=self.xml_handler.get_element_text(element, 'type'),
             model=self.xml_handler.get_element_text(element, 'model'),
             manufacturer=self.xml_handler.get_element_text(element, 'manufacturer'),
-            serialNumber=self.xml_handler.get_element_text(element, 'serialNumber'),
+            serialNumber=serial,
             description=self.xml_handler.get_element_text(element, 'description'),
             maxClockDrift=self.xml_handler.get_element_text(element, 'maxClockDrift'),
             recordLength=self.xml_handler.get_element_text(element, 'recordLength'),
             sampleRate=self.xml_handler.get_element_text(element, 'sampleRate'),
             sampleRateMultiplier=self.xml_handler.get_element_text(element, 'sampleRateMultiplier')
         )
-        return data
+
     
     def update_datalogger(self, element: ET.Element, data: Dict[str, str]) -> bool:
         """Update datalogger element with data"""

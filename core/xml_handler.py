@@ -181,7 +181,9 @@ class XMLHandler:
     def get_element_text(self, element: ET.Element, tag: str, default: str = '') -> str:
         """Get element text with namespace"""
         elem = element.find(f'sc3:{tag}', self.ns)
-        return elem.text if elem is not None and elem.text is not None else default
+        value = elem.text if elem is not None and elem.text is not None else default
+        print(f"Getting element text - Tag: {tag}, Value: {value}")
+        return value
     
     def update_element_text(self, element: ET.Element, tag: str, value: str) -> bool:
         """Update element text and track changes"""

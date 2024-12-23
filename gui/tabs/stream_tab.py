@@ -1,6 +1,6 @@
 # gui/tabs/stream_tab.py
 from PyQt5.QtWidgets import (QWidget, QFormLayout, QGroupBox, QPushButton, 
-                           QVBoxLayout, QLabel, QComboBox)
+                           QVBoxLayout, QLabel, QComboBox, QLineEdit)
 from PyQt5.QtCore import pyqtSignal
 from gui.widgets.validation import ValidationLineEdit
 import re
@@ -75,6 +75,15 @@ class StreamTab(QWidget):
         # Add flags field
         self.stream_flags = ValidationLineEdit(parent=self)  # No specific validation for flags
 
+        # Add sensor and datalogger serial number display fields (read-only)
+        self.sensor_serial_display = QLineEdit(self)
+        self.sensor_serial_display.setReadOnly(True)
+        self.sensor_serial_display.setPlaceholderText("Sensor Serial Number")
+        
+        self.datalogger_serial_display = QLineEdit(self)
+        self.datalogger_serial_display.setReadOnly(True)
+        self.datalogger_serial_display.setPlaceholderText("Datalogger Serial Number")
+
 
         # Create sensor and datalogger combo boxes
         self.sensor_combo = QComboBox(self)
@@ -108,6 +117,8 @@ class StreamTab(QWidget):
         stream_layout.addRow("Gain Frequency (Hz):", self.stream_gainFrequency)
         stream_layout.addRow("Gain Unit:", self.stream_gainUnit)
         stream_layout.addRow("Flags:", self.stream_flags)
+        stream_layout.addRow("Sensor Serial:", self.sensor_serial_display)
+        stream_layout.addRow("Datalogger Serial:", self.datalogger_serial_display)
         stream_layout.addRow("Sensor:", self.sensor_combo)
         stream_layout.addRow("Datalogger:", self.datalogger_combo)
         
@@ -183,38 +194,58 @@ class StreamTab(QWidget):
 
     def populate_sensor_datalogger(self):
         """Populate sensor and datalogger combo boxes"""
+        print("\n=== Populating Combos Debug ===")
+        
         if not self.inventory_model:
+            print("No inventory model available!")
             return
-            
-        # Clear existing items
+        
         self.sensor_combo.clear()
         self.datalogger_combo.clear()
         
-        # Add empty option
+        # Debug: Get all streams to collect used serial numbers
+        all_sensor_serials = set()
+        all_datalogger_serials = set()
+        
+        print("Collecting serial numbers from streams...")
+        for element in self.inventory_model.get_all_streams():
+            sensor_serial = self.inventory_model.xml_handler.get_element_text(element, 'sensorSerialNumber')
+            datalogger_serial = self.inventory_model.xml_handler.get_element_text(element, 'dataloggerSerialNumber')
+            
+            if sensor_serial:
+                all_sensor_serials.add(sensor_serial)
+                print(f"Found sensor serial: {sensor_serial}")
+            if datalogger_serial:
+                all_datalogger_serials.add(datalogger_serial)
+                print(f"Found datalogger serial: {datalogger_serial}")
+        
+        # Add empty options
         self.sensor_combo.addItem("Select Sensor...", None)
         self.datalogger_combo.addItem("Select Datalogger...", None)
         
-        # Add sensors
-        for sensor in self.inventory_model.get_sensors():
-            serial = self.inventory_model.xml_handler.get_element_text(sensor, 'serialNumber')
-            name = sensor.get('name', 'Unknown')
-            model = self.inventory_model.xml_handler.get_element_text(sensor, 'model') or ''
-            display = f"{name} - {model} ({serial})" if serial else name
-            if serial:
-                self.sensor_combo.addItem(display, serial)
-            
-        # Add dataloggers
-        for datalogger in self.inventory_model.get_dataloggers():
-            serial = self.inventory_model.xml_handler.get_element_text(datalogger, 'serialNumber')
-            name = datalogger.get('name', 'Unknown')
-            model = self.inventory_model.xml_handler.get_element_text(datalogger, 'model') or ''
-            display = f"{name} - {model} ({serial})" if serial else name
-            if serial:
-                self.datalogger_combo.addItem(display, serial)
+        # Add sensor serials to combo
+        print("\nPopulating sensor combo...")
+        for serial in sorted(all_sensor_serials):
+            display_text = f"Sensor {serial}"
+            print(f"Adding sensor: {display_text} with value {serial}")
+            self.sensor_combo.addItem(display_text, serial)
+        
+        # Add datalogger serials to combo
+        print("\nPopulating datalogger combo...")
+        for serial in sorted(all_datalogger_serials):
+            display_text = f"Datalogger {serial}"
+            print(f"Adding datalogger: {display_text} with value {serial}")
+            self.datalogger_combo.addItem(display_text, serial)
+        
+        print("=======================\n")
 
     def set_current_element(self, element: Optional[ET.Element]):
         """Set current stream element and populate fields"""
-        # self.current_element = element
+        print("\n=== Stream Tab Debug ===")
+        print(f"Setting current element: {element is not None}")
+        print("========================\n")
+
+        self.current_element = element
         if element is None:
             return
             
@@ -233,16 +264,27 @@ class StreamTab(QWidget):
         self.stream_sampleRateDenominator.setText(data.sampleRateDenominator)
         self.stream_gainFrequency.setText(data.gainFrequency)
         self.stream_gainUnit.setText(data.gainUnit)
+        self.sensor_serial_display.setText(data.sensor_serialnumber or "")
+        self.datalogger_serial_display.setText(data.datalogger_serialnumber or "")
         self.stream_flags.setText(data.flags)
-        
+
+        print(f"Stream data loaded:")
+        print(f"- Code: {data.code}")
+        print(f"- Sensor Serial: {data.sensor_serialnumber}")
+        print(f"- Datalogger Serial: {data.datalogger_serialnumber}")
+       
         # Set combo box selections for sensor and datalogger
-        sensor_index = self.sensor_combo.findData(data.sensor_ref)
+        sensor_index = self.sensor_combo.findData(data.sensor_serialnumber)
         if sensor_index >= 0:
             self.sensor_combo.setCurrentIndex(sensor_index)
             
-        datalogger_index = self.datalogger_combo.findData(data.datalogger_ref)
+        datalogger_index = self.datalogger_combo.findData(data.datalogger_serialnumber)
         if datalogger_index >= 0:
             self.datalogger_combo.setCurrentIndex(datalogger_index)
+
+        print(f"Combo box indices - Sensor: {sensor_index}, Datalogger: {datalogger_index}")
+        print("=======================\n")
+
             
         self.status_label.setText("")
 
@@ -262,37 +304,7 @@ class StreamTab(QWidget):
     def validate_datetime(self, text: str) -> bool:
         """Validate datetime string format"""
         return DateTimeValidator.validate(text)
-            
-        # # Basic datetime format validation
-        # datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
-        # if not re.match(datetime_pattern, text):
-        #     return False
-            
-        # try:
-        #     parts = text.split()
-        #     date_parts = parts[0].split('-')
-            
-        #     year = int(date_parts[0])
-        #     month = int(date_parts[1])
-        #     day = int(date_parts[2])
-            
-        #     if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-        #         return False
-                
-        #     if len(parts) > 1:
-        #         time_parts = parts[1].split(':')
-        #         hour = int(time_parts[0])
-        #         minute = int(time_parts[1])
-        #         second = int(time_parts[2])
-                
-        #         if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-        #             return False
-                    
-        #     return True
-            
-        # except (ValueError, IndexError):
-        #     return False
-            
+           
     def get_current_data(self) -> Dict[str, str]:
         """Get current field values"""
         return {

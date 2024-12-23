@@ -139,12 +139,19 @@ class DataloggerTab(QWidget):
         
     def set_current_element(self, element: Optional[ET.Element]):
         """Set current datalogger element and populate fields"""
+        print("\n=== Datalogger Tab Debug ===")
+        print(f"Setting datalogger element: {element is not None}")
+
         self.current_element = element
         if element is None:
             return
             
         # Get datalogger data
         data = self.inventory_model.get_datalogger_data(element)
+        print(f"Datalogger data loaded:")
+        print(f"- Name: {data.name}")
+        print(f"- Serial Number: {data.serialNumber}")  # Debug serial number
+        print(f"- Model: {data.model}")
         
         # Populate fields
         self.datalogger_name.setText(data.name)
