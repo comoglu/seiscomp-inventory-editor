@@ -52,7 +52,12 @@ class SensorTab(QWidget):
         
         self.sensor_model = ValidationLineEdit(parent=self)
         self.sensor_manufacturer = ValidationLineEdit(parent=self)
-        self.sensor_serial = ValidationLineEdit(required=True, parent=self)
+
+        self.sensor_serial = ValidationLineEdit(
+            validator=lambda x: bool(x.strip()),
+            required=True, 
+            parent=self)
+
         self.sensor_response = ValidationLineEdit(parent=self)
         self.sensor_unit = ValidationLineEdit(parent=self)
         self.sensor_lowFreq = ValidationLineEdit(
@@ -70,6 +75,7 @@ class SensorTab(QWidget):
         self.sensor_model.setToolTip("Sensor model number/name")
         self.sensor_manufacturer.setToolTip("Manufacturer name")
         self.sensor_serial.setToolTip("Serial number (required)")
+        self.sensor_serial.editingFinished.connect(self.handle_editing_finished)
         self.sensor_response.setToolTip("Response reference")
         self.sensor_unit.setToolTip("Measurement unit")
         self.sensor_lowFreq.setToolTip("Lower frequency limit (Hz)")
@@ -180,7 +186,7 @@ class SensorTab(QWidget):
             'type': self.sensor_type.currentText(),
             'model': self.sensor_model.text(),
             'manufacturer': self.sensor_manufacturer.text(),
-            'serialNumber': self.sensor_serial.text(),
+            'serialNumber': self.sensor_serial.text().strip(),
             'response': self.sensor_response.text(),
             'unit': self.sensor_unit.text(),
             'lowFrequency': self.sensor_lowFreq.text(),

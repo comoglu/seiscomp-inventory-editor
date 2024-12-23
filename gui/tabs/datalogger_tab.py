@@ -47,7 +47,11 @@ class DataloggerTab(QWidget):
         
         self.datalogger_model = ValidationLineEdit(parent=self)
         self.datalogger_manufacturer = ValidationLineEdit(parent=self)
-        self.datalogger_serial = ValidationLineEdit(required=True, parent=self)
+        self.datalogger_serial = ValidationLineEdit(
+            validator=lambda x: bool(x.strip()),  # Strip whitespace
+            required=True,
+            parent=self)
+        
         self.datalogger_description = ValidationLineEdit(parent=self)
         
         # Create sampling group
@@ -77,6 +81,7 @@ class DataloggerTab(QWidget):
         self.datalogger_model.setToolTip("Datalogger model number/name")
         self.datalogger_manufacturer.setToolTip("Manufacturer name")
         self.datalogger_serial.setToolTip("Serial number (required)")
+        self.datalogger_serial.editingFinished.connect(self.handle_editing_finished)
         self.datalogger_description.setToolTip("Additional description")
         self.max_clock_drift.setToolTip("Maximum clock drift in seconds per day")
         self.record_length.setToolTip("Record length in samples")
@@ -176,7 +181,7 @@ class DataloggerTab(QWidget):
             'type': self.datalogger_type.currentText(),
             'model': self.datalogger_model.text(),
             'manufacturer': self.datalogger_manufacturer.text(),
-            'serialNumber': self.datalogger_serial.text(),
+            'serialNumber': self.datalogger_serial.text().strip(),
             'description': self.datalogger_description.text(),
             'maxClockDrift': self.max_clock_drift.text(),
             'recordLength': self.record_length.text(),
