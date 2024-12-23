@@ -1,0 +1,22 @@
+seiscomp_inventory_editor/
+├── __init__.py
+├── main.py                    # Main application entry point
+├── gui/
+│   ├── __init__.py
+│   ├── main_window.py        # Main window class
+│   ├── widgets/
+│   │   ├── __init__.py
+│   │   ├── validation.py     # ValidationLineEdit
+│   │   └── tree_widget.py    # TreeWidgetWithKeyboardNav
+│   └── tabs/
+│       ├── __init__.py
+│       ├── network_tab.py    # Network tab implementation
+│       ├── station_tab.py    # Station tab implementation
+│       ├── location_tab.py   # Location tab implementation
+│       ├── sensor_tab.py     # Sensor tab implementation
+│       ├── datalogger_tab.py # Datalogger tab implementation
+│       └── stream_tab.py     # Stream tab implementation
+└── core/
+    ├── __init__.py
+    ├── xml_handler.py        # XML loading/saving functionality
+    └── inventory_model.py    # Data model classes
