@@ -5726,7 +5726,7 @@
           <end>2019-07-04T23:59:59.9990Z</end>
           <latitude>-22.643</latitude>
           <longitude>114.234001</longitude>
-          <elevation>1110</elevation>
+          <elevation>111</elevation>
           <stream publicID="Stream/20200916033445.251346.5" code="BHE" datalogger="Datalogger/20200910004833.030744.6" sensor="Sensor/20200910004833.030838.7">
             <start>2012-04-11T04:00:00.0000Z</start>
             <end>2019-07-04T23:59:59.9990Z</end>

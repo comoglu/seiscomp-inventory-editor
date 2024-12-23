@@ -5,6 +5,7 @@ from PyQt5.QtCore import pyqtSignal
 from gui.widgets.validation import ValidationLineEdit
 from typing import Optional, Dict
 from xml.etree import ElementTree as ET
+from core.datetime_validation import DateTimeValidator
 
 class DataloggerTab(QWidget):
     """Tab for editing datalogger information"""
@@ -24,7 +25,11 @@ class DataloggerTab(QWidget):
         self.current_element = None
         self.inventory_model = None
         self.setup_ui()
-        
+
+    def validate_datetime(self, text: str) -> bool:
+        """Validate datetime string format"""
+        return DateTimeValidator.validate(text)
+
     def setup_ui(self):
         """Initialize the user interface"""
         layout = QVBoxLayout(self)

@@ -6,6 +6,7 @@ from gui.widgets.validation import ValidationLineEdit
 import re
 from typing import Optional, Dict
 from xml.etree import ElementTree as ET
+from core.datetime_validation import DateTimeValidator
 
 class NetworkTab(QWidget):
     """Tab for editing network information"""
@@ -151,41 +152,40 @@ class NetworkTab(QWidget):
     @staticmethod
     def validate_datetime(text: str) -> bool:
         """Validate datetime string format"""
-        if not text:  # Empty is valid
-            return True
+        return DateTimeValidator.validate(text)
         
-        # Basic datetime format validation
-        datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
-        if not re.match(datetime_pattern, text):
-            return False
+        # # Basic datetime format validation
+        # datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
+        # if not re.match(datetime_pattern, text):
+        #     return False
             
-        try:
-            # Split into date and optional time parts
-            parts = text.split()
-            date_parts = parts[0].split('-')
+        # try:
+        #     # Split into date and optional time parts
+        #     parts = text.split()
+        #     date_parts = parts[0].split('-')
             
-            # Validate year, month, day
-            year = int(date_parts[0])
-            month = int(date_parts[1])
-            day = int(date_parts[2])
+        #     # Validate year, month, day
+        #     year = int(date_parts[0])
+        #     month = int(date_parts[1])
+        #     day = int(date_parts[2])
             
-            if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-                return False
+        #     if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
+        #         return False
                 
-            # Validate time if present
-            if len(parts) > 1:
-                time_parts = parts[1].split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
-                second = int(time_parts[2])
+        #     # Validate time if present
+        #     if len(parts) > 1:
+        #         time_parts = parts[1].split(':')
+        #         hour = int(time_parts[0])
+        #         minute = int(time_parts[1])
+        #         second = int(time_parts[2])
                 
-                if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-                    return False
+        #         if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
+        #             return False
                     
-            return True
+        #     return True
             
-        except (ValueError, IndexError):
-            return False
+        # except (ValueError, IndexError):
+        #     return False
         
     def validate_all(self) -> bool:
         """Validate all input fields"""

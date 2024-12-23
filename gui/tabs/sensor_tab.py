@@ -5,6 +5,8 @@ from PyQt5.QtCore import pyqtSignal
 from gui.widgets.validation import ValidationLineEdit
 from typing import Optional, Dict
 from xml.etree import ElementTree as ET
+import re
+from core.datetime_validation import DateTimeValidator
 
 class SensorTab(QWidget):
     """Tab for editing sensor information"""
@@ -183,37 +185,36 @@ class SensorTab(QWidget):
     @staticmethod
     def validate_datetime(text: str) -> bool:
         """Validate datetime string format"""
-        if not text:  # Empty is valid
-            return True
+        return DateTimeValidator.validate(text)
             
-        datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
-        if not re.match(datetime_pattern, text):
-            return False
+        # datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
+        # if not re.match(datetime_pattern, text):
+        #     return False
             
-        try:
-            parts = text.split()
-            date_parts = parts[0].split('-')
+        # try:
+        #     parts = text.split()
+        #     date_parts = parts[0].split('-')
             
-            year = int(date_parts[0])
-            month = int(date_parts[1])
-            day = int(date_parts[2])
+        #     year = int(date_parts[0])
+        #     month = int(date_parts[1])
+        #     day = int(date_parts[2])
             
-            if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-                return False
+        #     if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
+        #         return False
                 
-            if len(parts) > 1:
-                time_parts = parts[1].split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
-                second = int(time_parts[2])
+        #     if len(parts) > 1:
+        #         time_parts = parts[1].split(':')
+        #         hour = int(time_parts[0])
+        #         minute = int(time_parts[1])
+        #         second = int(time_parts[2])
                 
-                if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-                    return False
+        #         if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
+        #             return False
                     
-            return True
+        #     return True
             
-        except (ValueError, IndexError):
-            return False
+        # except (ValueError, IndexError):
+        #     return False
             
     def validate_frequency(self) -> bool:
         """Validate frequency values"""

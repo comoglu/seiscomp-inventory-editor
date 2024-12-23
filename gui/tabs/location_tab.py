@@ -1,8 +1,10 @@
 # gui/tabs/location_tab.py
+
 from PyQt5.QtWidgets import (QWidget, QFormLayout, QGroupBox, QPushButton, 
                            QVBoxLayout, QLabel)
 from PyQt5.QtCore import pyqtSignal
 from gui.widgets.validation import ValidationLineEdit
+from core.datetime_validation import DateTimeValidator
 import re
 from typing import Optional, Dict
 from xml.etree import ElementTree as ET
@@ -27,46 +29,59 @@ class LocationTab(QWidget):
         location_layout = QFormLayout()
         
         # Create input fields with validation
-        self.location_code = ValidationLineEdit(required=True, parent=self)
+        # Code validation should check for non-empty and alphanumeric
+        self.location_code = ValidationLineEdit(
+            validator=lambda x: bool(re.match(r'^[A-Za-z0-9]*$', x)),  # Note the * instead of + to allow empty
+            required=False,  # Changed to False since it's not always required
+            parent=self
+        )
+        
+        # Use DateTimeValidator for start/end times
         self.location_start = ValidationLineEdit(
-            validator='datetime',
+            validator=lambda x: DateTimeValidator.validate(x),
             parent=self
         )
         self.location_end = ValidationLineEdit(
-            validator='datetime',
+            validator=lambda x: DateTimeValidator.validate(x),
             parent=self
         )
+        
+        # Coordinate validation
         self.location_lat = ValidationLineEdit(
-            validator=lambda x: re.match(r'^-?\d*\.?\d*$', x) and -90 <= float(x) <= 90 if x else True,
+            validator=lambda x: bool(re.match(r'^-?\d*\.?\d*$', x)) and -90 <= float(x) <= 90 if x else True,
             parent=self
         )
         self.location_lon = ValidationLineEdit(
-            validator=lambda x: re.match(r'^-?\d*\.?\d*$', x) and -180 <= float(x) <= 180 if x else True,
+            validator=lambda x: bool(re.match(r'^-?\d*\.?\d*$', x)) and -180 <= float(x) <= 180 if x else True,
             parent=self
         )
+        
+        # Numeric validation for elevation and depth
         self.location_elevation = ValidationLineEdit(
-            validator=lambda x: re.match(r'^-?\d*\.?\d*$', x) if x else True,
+            validator=lambda x: bool(re.match(r'^-?\d*\.?\d*$', x)) if x else True,
             parent=self
         )
         self.location_depth = ValidationLineEdit(
-            validator=lambda x: re.match(r'^-?\d*\.?\d*$', x) if x else True,
+            validator=lambda x: bool(re.match(r'^-?\d*\.?\d*$', x)) if x else True,
             parent=self
         )
+        
+        # Optional text fields
         self.location_country = ValidationLineEdit(parent=self)
         self.location_description = ValidationLineEdit(parent=self)
         self.location_affiliation = ValidationLineEdit(parent=self)
         
-        # Add tooltips
-        self.location_code.setToolTip("Location code (required)")
+        # Add tooltips with validation requirements
+        self.location_code.setToolTip("Location code (required, alphanumeric only)")
+        self.location_start.setToolTip("Start date/time (YYYY-MM-DD HH:MM:SS)")
+        self.location_end.setToolTip("End date/time (YYYY-MM-DD HH:MM:SS)")
         self.location_lat.setToolTip("Latitude in decimal degrees (-90 to 90)")
         self.location_lon.setToolTip("Longitude in decimal degrees (-180 to 180)")
         self.location_elevation.setToolTip("Elevation in meters above sea level")
         self.location_depth.setToolTip("Depth in meters below surface (positive down)")
-        self.location_start.setToolTip("Start date/time (YYYY-MM-DD HH:MM:SS)")
-        self.location_end.setToolTip("End date/time (YYYY-MM-DD HH:MM:SS)")
         
         # Add fields to layout
-        location_layout.addRow("Code:", self.location_code)
+        location_layout.addRow("Code*:", self.location_code)
         location_layout.addRow("Start Time:", self.location_start)
         location_layout.addRow("End Time:", self.location_end)
         location_layout.addRow("Latitude (°):", self.location_lat)
@@ -110,6 +125,15 @@ class LocationTab(QWidget):
         """)
         layout.addWidget(self.status_label)
         
+        # Connect editing finished signals
+        self.location_code.editingFinished.connect(self.handle_editing_finished)
+        self.location_start.editingFinished.connect(self.handle_editing_finished)
+        self.location_end.editingFinished.connect(self.handle_editing_finished)
+        self.location_lat.editingFinished.connect(self.handle_editing_finished)
+        self.location_lon.editingFinished.connect(self.handle_editing_finished)
+        self.location_elevation.editingFinished.connect(self.handle_editing_finished)
+        self.location_depth.editingFinished.connect(self.handle_editing_finished)
+    
     def set_inventory_model(self, model):
         """Set the inventory model reference"""
         self.inventory_model = model
@@ -139,54 +163,27 @@ class LocationTab(QWidget):
         
     def get_current_data(self) -> Dict[str, str]:
         """Get current field values"""
-        return {
-            'code': self.location_code.text(),
-            'start': self.location_start.text(),
-            'end': self.location_end.text(),
-            'latitude': self.location_lat.text(),
-            'longitude': self.location_lon.text(),
-            'elevation': self.location_elevation.text(),
-            'depth': self.location_depth.text(),
-            'country': self.location_country.text(),
-            'description': self.location_description.text(),
-            'affiliation': self.location_affiliation.text()
+        data = {
+            'code': self.location_code.text().strip(),
+            'start': self.location_start.text().strip(),
+            'end': self.location_end.text().strip(),
+            'latitude': self.location_lat.text().strip(),
+            'longitude': self.location_lon.text().strip(),
+            'elevation': self.location_elevation.text().strip(),
+            'depth': self.location_depth.text().strip(),
+            'country': self.location_country.text().strip(),
+            'description': self.location_description.text().strip(),
+            'affiliation': self.location_affiliation.text().strip()
         }
         
-    @staticmethod
-    def validate_datetime(text: str) -> bool:
-        """Validate datetime string format"""
-        if not text:  # Empty is valid
-            return True
+        # Convert datetime formats if needed
+        if data['start']:
+            data['start'] = DateTimeValidator.convert_to_seiscomp_format(data['start']) or data['start']
+        if data['end']:
+            data['end'] = DateTimeValidator.convert_to_seiscomp_format(data['end']) or data['end']
             
-        datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
-        if not re.match(datetime_pattern, text):
-            return False
-            
-        try:
-            parts = text.split()
-            date_parts = parts[0].split('-')
-            
-            year = int(date_parts[0])
-            month = int(date_parts[1])
-            day = int(date_parts[2])
-            
-            if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-                return False
-                
-            if len(parts) > 1:
-                time_parts = parts[1].split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
-                second = int(time_parts[2])
-                
-                if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-                    return False
-                    
-            return True
-            
-        except (ValueError, IndexError):
-            return False
-            
+        return data
+        
     def validate_coordinates(self) -> bool:
         """Validate latitude and longitude"""
         try:
@@ -218,16 +215,56 @@ class LocationTab(QWidget):
             
         except ValueError:
             return False
-            
+
     def validate_all(self) -> bool:
         """Validate all input fields"""
-        return all([
-            self.location_code.validate(),
-            self.location_start.validate(),
-            self.location_end.validate(),
-            self.validate_coordinates(),
-            self.validate_elevation()
-        ])
+        validations = []
+        
+        # Check code field - only validate if not empty
+        if self.location_code.text().strip():
+            code_valid = self.location_code.validate()
+            if not code_valid:
+                self.status_label.setText("Location code must be alphanumeric")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+                validations.append(False)
+
+        
+        # Validate dates
+        if self.location_start.text():
+            start_valid = DateTimeValidator.validate(self.location_start.text())
+            if not start_valid:
+                self.status_label.setText("Invalid start time format")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+                validations.append(False)
+        
+        if self.location_end.text():
+            end_valid = DateTimeValidator.validate(self.location_end.text())
+            if not end_valid:
+                self.status_label.setText("Invalid end time format")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+                validations.append(False)
+        
+        # Validate coordinates if provided
+        if self.location_lat.text() or self.location_lon.text():
+            coord_valid = self.validate_coordinates()
+            if not coord_valid:
+                self.status_label.setText("Invalid coordinates")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+                validations.append(False)
+        
+        # Validate numeric fields if provided
+        if self.location_elevation.text() or self.location_depth.text():
+            numeric_valid = self.validate_elevation()
+            if not numeric_valid:
+                self.status_label.setText("Invalid elevation or depth values")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+                validations.append(False)
+        
+        # If any validation failed, return False
+        if False in validations:
+            return False
+        
+        return True
         
     def update_location(self):
         """Update location data"""
@@ -256,4 +293,26 @@ class LocationTab(QWidget):
     def handle_editing_finished(self):
         """Called when editing is finished in any field"""
         if self.current_element:
-            self.update_location()
+            # Convert datetime formats if needed
+            sender = self.sender()
+            if sender in [self.location_start, self.location_end] and sender.text():
+                converted = DateTimeValidator.convert_to_seiscomp_format(sender.text())
+                if converted and converted != sender.text():
+                    sender.setText(converted)
+            
+            # Validate the field
+            self.validate_all()
+
+    def clear_fields(self):
+        """Clear all input fields"""
+        self.location_code.clear()
+        self.location_start.clear()
+        self.location_end.clear()
+        self.location_lat.clear()
+        self.location_lon.clear()
+        self.location_elevation.clear()
+        self.location_depth.clear()
+        self.location_country.clear()
+        self.location_description.clear()
+        self.location_affiliation.clear()
+        self.status_label.clear()

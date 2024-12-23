@@ -18,6 +18,10 @@ class StreamData:
     sensor_serialnumber: str = ''
     datalogger_serialnumber: str = ''
     flags: str = ''
+    sampleRateNumerator: str = ''
+    sampleRateDenominator: str = ''
+    sensor_ref: str = ''
+    datalogger_ref: str = ''
 
 @dataclass
 class SensorData:
@@ -70,6 +74,7 @@ class StationData:
     latitude: str = ''
     longitude: str = ''
     elevation: str = ''
+    depth: str = ''
     place: str = ''
     country: str = ''
     affiliation: str = ''
@@ -92,24 +97,68 @@ class InventoryModel:
     
     def __init__(self, xml_handler):
         self.xml_handler = xml_handler
-        self.sensor_map: Dict[str, ET.Element] = {}  # serial -> element
-        self.datalogger_map: Dict[str, ET.Element] = {}  # serial -> element
+        self.sensor_map = {}  # serial -> element
+        self.datalogger_map = {}  # serial -> element
+        self.ns = {'sc3': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.12'}
+
         
     def load_inventory(self) -> None:
         """Load sensor and datalogger mappings"""
         self.sensor_map.clear()
         self.datalogger_map.clear()
         
+        # Map sensors by their serial numbers
         for sensor in self.get_sensors():
-            serial = self.xml_handler.get_element_text(sensor, 'serialNumber')
-            if serial:
-                self.sensor_map[serial] = sensor
+            name = sensor.get('name', '')
+            if name:
+                self.sensor_map[name] = sensor
                 
+        # Map dataloggers by their serial numbers
         for datalogger in self.get_dataloggers():
-            serial = self.xml_handler.get_element_text(datalogger, 'serialNumber')
-            if serial:
-                self.datalogger_map[serial] = datalogger
+            name = datalogger.get('name', '')
+            if name:
+                self.datalogger_map[name] = datalogger
+
+    def get_location_data(self, element: ET.Element) -> LocationData:
+        """Extract location data from element"""
+        return LocationData(
+            code=element.get('code', ''),
+            start=self.xml_handler.get_element_text(element, 'start'),
+            end=self.xml_handler.get_element_text(element, 'end'),
+            latitude=self.xml_handler.get_element_text(element, 'latitude'),
+            longitude=self.xml_handler.get_element_text(element, 'longitude'),
+            elevation=self.xml_handler.get_element_text(element, 'elevation'),
+            depth=self.xml_handler.get_element_text(element, 'depth'),
+            country=self.xml_handler.get_element_text(element, 'country'),
+            description=self.xml_handler.get_element_text(element, 'description'),
+            affiliation=self.xml_handler.get_element_text(element, 'affiliation')
+        )
     
+    def update_location(self, element: ET.Element, data: Dict[str, str]) -> bool:
+        """Update location element with data"""
+        if data['code']:
+            element.set('code', data['code'])
+        
+        updated = False
+        fields = {
+            'start': data['start'],
+            'end': data['end'],
+            'latitude': data['latitude'],
+            'longitude': data['longitude'],
+            'elevation': data['elevation'],
+            'depth': data['depth'],
+            'country': data['country'],
+            'description': data['description'],
+            'affiliation': data['affiliation']
+        }
+        
+        for field, value in fields.items():
+            if self.xml_handler.update_element_text(element, field, value):
+                updated = True
+        
+        return updated
+
+
     def get_sensors(self) -> List[ET.Element]:
         """Get all sensor elements"""
         if not self.xml_handler.root:
@@ -123,6 +172,8 @@ class InventoryModel:
         return self.xml_handler.get_dataloggers()
     
     def get_stream_data(self, element: ET.Element) -> StreamData:
+        datalogger_ref = element.get('datalogger', '')
+        sensor_ref = element.get('sensor', '')
         """Extract stream data from element"""
         return StreamData(
             code=element.get('code', ''),
@@ -132,14 +183,25 @@ class InventoryModel:
             azimuth=self.xml_handler.get_element_text(element, 'azimuth'),
             dip=self.xml_handler.get_element_text(element, 'dip'),
             gain=self.xml_handler.get_element_text(element, 'gain'),
-            sampleRate=self.xml_handler.get_element_text(element, 'sampleRate'),
             gainFrequency=self.xml_handler.get_element_text(element, 'gainFrequency'),
             gainUnit=self.xml_handler.get_element_text(element, 'gainUnit'),
-            sensor_serialnumber=self.xml_handler.get_element_text(element, 'sensorSerialNumber'),
-            datalogger_serialnumber=self.xml_handler.get_element_text(element, 'dataloggerSerialNumber'),
+            sampleRate=self.xml_handler.get_element_text(element, 'sampleRate'),
+            sampleRateNumerator=self.xml_handler.get_element_text(element, 'sampleRateNumerator'),
+            sampleRateDenominator=self.xml_handler.get_element_text(element, 'sampleRateDenominator'),
+            sensor_ref=sensor_ref,
+            datalogger_ref=datalogger_ref,
             flags=self.xml_handler.get_element_text(element, 'flags')
         )
-    
+
+    def get_sensor_by_serial(self, serial: str) -> Optional[ET.Element]:
+        """Get sensor element by serial number"""
+        return self.sensor_map.get(serial)
+
+    def get_datalogger_by_serial(self, serial: str) -> Optional[ET.Element]:
+        """Get datalogger element by serial number"""
+        return self.datalogger_map.get(serial)
+
+
     def update_stream(self, element: ET.Element, data: Dict[str, str]) -> bool:
         """Update stream element with data"""
         if data['code']:
@@ -169,7 +231,7 @@ class InventoryModel:
     
     def get_sensor_data(self, element: ET.Element) -> SensorData:
         """Extract sensor data from element"""
-        return SensorData(
+        data = SensorData(
             name=element.get('name', ''),
             type=self.xml_handler.get_element_text(element, 'type'),
             model=self.xml_handler.get_element_text(element, 'model'),
@@ -182,6 +244,8 @@ class InventoryModel:
             calibrationDate=self.xml_handler.get_element_text(element, 'calibrationDate'),
             calibrationScale=self.xml_handler.get_element_text(element, 'calibrationScale')
         )
+        return data
+
     
     def update_sensor(self, element: ET.Element, data: Dict[str, str]) -> bool:
         """Update sensor element with data"""
@@ -214,7 +278,7 @@ class InventoryModel:
     
     def get_datalogger_data(self, element: ET.Element) -> DataloggerData:
         """Extract datalogger data from element"""
-        return DataloggerData(
+        data = DataloggerData(
             name=element.get('name', ''),
             type=self.xml_handler.get_element_text(element, 'type'),
             model=self.xml_handler.get_element_text(element, 'model'),
@@ -226,6 +290,7 @@ class InventoryModel:
             sampleRate=self.xml_handler.get_element_text(element, 'sampleRate'),
             sampleRateMultiplier=self.xml_handler.get_element_text(element, 'sampleRateMultiplier')
         )
+        return data
     
     def update_datalogger(self, element: ET.Element, data: Dict[str, str]) -> bool:
         """Update datalogger element with data"""
@@ -307,6 +372,7 @@ class InventoryModel:
             latitude=self.xml_handler.get_element_text(element, 'latitude'),
             longitude=self.xml_handler.get_element_text(element, 'longitude'),
             elevation=self.xml_handler.get_element_text(element, 'elevation'),
+            depth=self.xml_handler.get_element_text(element, 'depth'),
             place=self.xml_handler.get_element_text(element, 'place'),
             country=self.xml_handler.get_element_text(element, 'country'),
             affiliation=self.xml_handler.get_element_text(element, 'affiliation')
@@ -329,6 +395,7 @@ class InventoryModel:
             'latitude': data['latitude'],
             'longitude': data['longitude'],
             'elevation': data['elevation'],
+            'depth': data['depth'],
             'place': data['place'],
             'country': data['country'],
             'affiliation': data['affiliation']
