@@ -2,7 +2,7 @@
 from xml.etree import ElementTree as ET
 from pathlib import Path
 import re
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Generator, Optional, Tuple, List
 import logging
 from .reference_manager import ReferenceManager
 
@@ -60,7 +60,18 @@ class XMLHandler:
         except Exception as e:
             self.logger.error(f"Error loading file: {str(e)}")
             return False, f"Error loading file: {str(e)}"
+
+    def lazy_load_elements(self) -> Generator[ET.Element, None, None]:
+        """Lazy load elements for large XML files"""
+        if not self.root:
+            return
             
+        context = ET.iterparse(self.current_file, events=('end',))
+        for event, elem in context:
+            if elem.tag.endswith('}network'):
+                yield elem
+                elem.clear()
+
     def save_file(self) -> Tuple[bool, str]:
         """Save XML while preserving formatting"""
         if not (self.current_file and self.tree):
@@ -92,7 +103,21 @@ class XMLHandler:
             if backup_path.exists():
                 backup_path.rename(current_path)
             return False, f"Error saving file: {str(e)}"
-            
+
+    def restore_backup(self) -> bool:
+        """Restore from backup if available"""
+        try:
+            if self.current_file:
+                current_path = Path(self.current_file)
+                backup_path = current_path.with_suffix('.xml.bak')
+                if backup_path.exists():
+                    backup_path.rename(current_path)
+                    return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error restoring backup: {str(e)}")
+            return False
+                    
     def _extract_namespaces(self, root: ET.Element) -> None:
         """Extract and register namespaces from root element"""
         # Keep track of all found namespaces

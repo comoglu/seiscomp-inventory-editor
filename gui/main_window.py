@@ -106,6 +106,25 @@ class MainWindow(QMainWindow):
         # Create menu bar
         self.create_menu_bar()
 
+    def setup_autosave(self):
+        """Setup autosave functionality"""
+        self.autosave_timer = QTimer()
+        self.autosave_timer.timeout.connect(self.autosave)
+        self.autosave_interval = 300000  # 5 minutes
+        self.autosave_timer.start(self.autosave_interval)
+        self.unsaved_changes = False
+
+    def autosave(self):
+        """Perform autosave if there are changes"""
+        if self.unsaved_changes:
+            try:
+                success, _ = self.xml_handler.save_file()
+                if success:
+                    self.unsaved_changes = False
+                    self.status_bar.showMessage("Auto-saved", 3000)
+            except Exception as e:
+                self.logger.error(f"Autosave failed: {str(e)}")
+
     def setup_tabs(self):
         """Initialize all tab widgets"""
         self.tab_widget = QTabWidget()

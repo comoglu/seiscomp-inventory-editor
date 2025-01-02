@@ -78,7 +78,6 @@ class LocationTab(QWidget):
         self.location_lat.setToolTip("Latitude in decimal degrees (-90 to 90)")
         self.location_lon.setToolTip("Longitude in decimal degrees (-180 to 180)")
         self.location_elevation.setToolTip("Elevation in meters above sea level")
-        self.location_depth.setToolTip("Depth in meters below surface (positive down)")
         
         # Add fields to layout
         location_layout.addRow("Code*:", self.location_code)
@@ -87,7 +86,6 @@ class LocationTab(QWidget):
         location_layout.addRow("Latitude (°):", self.location_lat)
         location_layout.addRow("Longitude (°):", self.location_lon)
         location_layout.addRow("Elevation (m):", self.location_elevation)
-        location_layout.addRow("Depth (m):", self.location_depth)
         location_layout.addRow("Country:", self.location_country)
         location_layout.addRow("Description:", self.location_description)
         location_layout.addRow("Affiliation:", self.location_affiliation)
@@ -132,7 +130,6 @@ class LocationTab(QWidget):
         self.location_lat.editingFinished.connect(self.handle_editing_finished)
         self.location_lon.editingFinished.connect(self.handle_editing_finished)
         self.location_elevation.editingFinished.connect(self.handle_editing_finished)
-        self.location_depth.editingFinished.connect(self.handle_editing_finished)
     
     def set_inventory_model(self, model):
         """Set the inventory model reference"""
@@ -154,7 +151,6 @@ class LocationTab(QWidget):
         self.location_lat.setText(data.latitude)
         self.location_lon.setText(data.longitude)
         self.location_elevation.setText(data.elevation)
-        self.location_depth.setText(data.depth)
         self.location_country.setText(data.country)
         self.location_description.setText(data.description)
         self.location_affiliation.setText(data.affiliation)
