@@ -7,7 +7,7 @@ from xml.etree import ElementTree as ET
 class TreeWidgetWithKeyboardNav(QTreeWidget):
     """Enhanced QTreeWidget with keyboard navigation"""
     
-    elementSelected = pyqtSignal(str, ET.Element)  # Signal for element selection (type, element)
+    elementSelected = pyqtSignal(str, ET.Element)  # Signal for element selection
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -16,7 +16,7 @@ class TreeWidgetWithKeyboardNav(QTreeWidget):
         self.setup_style()
         
     def setup_style(self):
-        """Setup widget styling"""
+        """Setup widget styling with improved expand/collapse indicators"""
         self.setStyleSheet("""
             QTreeWidget {
                 border: 1px solid #ccc;
@@ -26,6 +26,7 @@ class TreeWidgetWithKeyboardNav(QTreeWidget):
             }
             QTreeWidget::item {
                 padding: 5px;
+                padding-right: 10px;
             }
             QTreeWidget::item:selected {
                 background-color: #e6f3ff;
@@ -37,7 +38,26 @@ class TreeWidgetWithKeyboardNav(QTreeWidget):
             QTreeWidget::branch {
                 background: transparent;
             }
+            QTreeWidget::branch:has-children:!has-siblings:closed,
+            QTreeWidget::branch:closed:has-children:has-siblings {
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNNCAxMGw0LTQtNC00IiBzdHJva2U9IiM2NjY2NjYiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+);
+                padding: 2px;
+            }
+            QTreeWidget::branch:has-children:!has-siblings:open,
+            QTreeWidget::branch:open:has-children:has-siblings {
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMiA0bDQgNCA0LTQiIHN0cm9rZT0iIzY2NjY2NiIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=);
+                padding: 2px;
+            }
+            QTreeWidget::branch:!has-children:!has-siblings,
+            QTreeWidget::branch:!has-children:has-siblings {
+                border: none;
+            }
         """)
+
+        # Additional visual settings
+        self.setIndentation(20)  # Increase indentation for better hierarchy visibility
+        self.setAnimated(True)  # Enable animations for expand/collapse
+        self.setExpandsOnDoubleClick(True)  # Allow double-click to expand
         
     def _handle_current_item_changed(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         """Handle item selection change with improved stability"""
@@ -167,7 +187,7 @@ class TreeWidgetWithKeyboardNav(QTreeWidget):
                         expand_path(root_item, path_parts[1:])
                         
     def populate_inventory(self, xml_handler):
-        """Populate tree with inventory data"""
+        """Populate tree with inventory data with visual indicators for expandable items"""
         try:
             self.clear()
             
@@ -176,95 +196,118 @@ class TreeWidgetWithKeyboardNav(QTreeWidget):
             if inventory is None:
                 print("Warning: No inventory found in XML")
                 return
+
+            def create_tree_item(parent, text, element_type, element):
+                """Helper function to create tree items with proper visual indicators"""
+                item = QTreeWidgetItem(parent)
+                item.setText(0, text)
+                item.setData(0, Qt.UserRole, (element_type, element))
                 
-            # Add networks with error handling
+                # Add visual indicator if item will have children
+                has_children = False
+                if element_type == 'network':
+                    has_children = len(xml_handler.get_stations(element)) > 0
+                elif element_type == 'station':
+                    has_children = len(xml_handler.get_locations(element)) > 0
+                elif element_type == 'location':
+                    has_children = len(xml_handler.get_streams(element)) > 0
+                
+                if has_children:
+                    # Set a custom icon or marker for items with children
+                    item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                else:
+                    item.setChildIndicatorPolicy(QTreeWidgetItem.DontShowIndicator)
+                
+                return item
+            
+            # Add networks
             for network in xml_handler.get_networks():
                 try:
-                    network_item = QTreeWidgetItem(self)
                     network_code = network.get('code', '')
-                    network_item.setText(0, f"Network: {network_code}")
-                    network_item.setData(0, Qt.UserRole, ('network', network))
+                    network_item = create_tree_item(
+                        self, 
+                        f"Network: {network_code}", 
+                        'network', 
+                        network
+                    )
                     
                     # Add stations
                     for station in xml_handler.get_stations(network):
                         try:
-                            station_item = QTreeWidgetItem(network_item)
                             station_code = station.get('code', '')
-                            station_item.setText(0, f"Station: {station_code}")
-                            station_item.setData(0, Qt.UserRole, ('station', station))
+                            station_item = create_tree_item(
+                                network_item,
+                                f"Station: {station_code}",
+                                'station',
+                                station
+                            )
                             
-                            # Add sensor locations
+                            # Add locations
                             for location in xml_handler.get_locations(station):
                                 try:
-                                    location_item = QTreeWidgetItem(station_item)
                                     location_code = location.get('code', '')
-                                    location_item.setText(0, f"Location: {location_code}")
-                                    location_item.setData(0, Qt.UserRole, ('location', location))
+                                    location_item = create_tree_item(
+                                        station_item,
+                                        f"Location: {location_code}",
+                                        'location',
+                                        location
+                                    )
                                     
                                     # Add streams
                                     streams = xml_handler.get_streams(location)
                                     for stream in self.sort_streams(streams):
                                         try:
-                                            stream_item = QTreeWidgetItem(location_item)
                                             stream_code = stream.get('code', '')
-                                            stream_item.setText(0, f"Stream: {stream_code}")
-                                            stream_item.setData(0, Qt.UserRole, ('stream', stream))
+                                            create_tree_item(
+                                                location_item,
+                                                f"Stream: {stream_code}",
+                                                'stream',
+                                                stream
+                                            )
                                         except Exception as e:
                                             print(f"Error adding stream item: {str(e)}")
                                             continue
+                                            
                                 except Exception as e:
                                     print(f"Error adding location item: {str(e)}")
                                     continue
+                                    
                         except Exception as e:
                             print(f"Error adding station item: {str(e)}")
                             continue
+                            
                 except Exception as e:
                     print(f"Error adding network item: {str(e)}")
                     continue
+
+            # Add special sections (Sensors and Dataloggers)
+            def add_special_section(title, items, item_type):
+                if items:
+                    section_item = QTreeWidgetItem(self)
+                    section_item.setText(0, title)
+                    section_item.setChildIndicatorPolicy(
+                        QTreeWidgetItem.ShowIndicator if items else QTreeWidgetItem.DontShowIndicator
+                    )
                     
-            # Add sensors section with error handling
-            try:
-                sensors = xml_handler.get_sensors()
-                if sensors:
-                    sensors_item = QTreeWidgetItem(self)
-                    sensors_item.setText(0, "Sensors")
-                    
-                    for sensor in sensors:
+                    for item in items:
                         try:
-                            sensor_item = QTreeWidgetItem(sensors_item)
-                            name = sensor.get('name', '')
-                            serial = xml_handler.get_element_text(sensor, 'serialNumber')
-                            sensor_item.setText(0, f"Sensor: {name} ({serial})" if serial else f"Sensor: {name}")
-                            sensor_item.setData(0, Qt.UserRole, ('sensor', sensor))
+                            name = item.get('name', '')
+                            serial = xml_handler.get_element_text(item, 'serialNumber')
+                            child_item = create_tree_item(
+                                section_item,
+                                f"{item_type}: {name} ({serial})" if serial else f"{item_type}: {name}",
+                                item_type.lower(),
+                                item
+                            )
                         except Exception as e:
-                            print(f"Error adding sensor item: {str(e)}")
+                            print(f"Error adding {item_type} item: {str(e)}")
                             continue
-            except Exception as e:
-                print(f"Error adding sensors section: {str(e)}")
-                
-            # Add dataloggers section with error handling
-            try:
-                dataloggers = xml_handler.get_dataloggers()
-                if dataloggers:
-                    dataloggers_item = QTreeWidgetItem(self)
-                    dataloggers_item.setText(0, "Dataloggers")
-                    
-                    for datalogger in dataloggers:
-                        try:
-                            datalogger_item = QTreeWidgetItem(dataloggers_item)
-                            name = datalogger.get('name', '')
-                            serial = xml_handler.get_element_text(datalogger, 'serialNumber')
-                            datalogger_item.setText(0, f"Datalogger: {name} ({serial})" if serial else f"Datalogger: {name}")
-                            datalogger_item.setData(0, Qt.UserRole, ('datalogger', datalogger))
-                        except Exception as e:
-                            print(f"Error adding datalogger item: {str(e)}")
-                            continue
-            except Exception as e:
-                print(f"Error adding dataloggers section: {str(e)}")
-                
+
+            add_special_section("Sensors", xml_handler.get_sensors(), "Sensor")
+            add_special_section("Dataloggers", xml_handler.get_dataloggers(), "Datalogger")
+
         except Exception as e:
             print(f"Error populating inventory tree: {str(e)}")
-            # Clear tree on major error to prevent partial/invalid state
             self.clear()
                 
     def sort_streams(self, streams: List[ET.Element]) -> List[ET.Element]:
