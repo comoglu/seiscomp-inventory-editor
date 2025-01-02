@@ -454,7 +454,6 @@ class InventoryModel:
             'latitude': data['latitude'],
             'longitude': data['longitude'],
             'elevation': data['elevation'],
-            'depth': data['depth'],
             'place': data['place'],
             'country': data['country'],
             'affiliation': data['affiliation']

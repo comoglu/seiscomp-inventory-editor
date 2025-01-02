@@ -240,26 +240,30 @@ class XMLHandler:
 
     def update_element_text(self, element: ET.Element, tag: str, value: str) -> bool:
         """Update element text and track changes"""
-        if not element.get('publicID'):
-            return False
+        try:
+            if not element.get('publicID'):
+                return False
+                
+            elem = element.find(f'sc3:{tag}', self.ns)
+            current_value = elem.text if elem is not None else ''
             
-        elem = element.find(f'sc3:{tag}', self.ns)
-        current_value = elem.text if elem is not None else ''
-        
-        if value != current_value:
-            if elem is None and value:
-                elem = ET.SubElement(element, f'{{{self.ns["sc3"]}}}{tag}')
-                elem.text = value
-            elif elem is not None:
-                if value:
+            if value != current_value:
+                if elem is None and value:
+                    elem = ET.SubElement(element, f'{{{self.ns["sc3"]}}}{tag}')
                     elem.text = value
-                else:
-                    element.remove(elem)
-                    
-            self.track_changes(element.get('publicID'), {tag: value})
-            return True
-            
-        return False
+                elif elem is not None:
+                    if value:
+                        elem.text = value
+                    else:
+                        element.remove(elem)
+                        
+                self.track_changes(element.get('publicID'), {tag: value})
+                return True
+                
+            return False
+        except Exception as e:
+            self.logger.error(f"Error updating element text for tag {tag}: {str(e)}")
+            return False
 
     def track_changes(self, element_id: str, changes: Dict[str, str]) -> None:
         """Track changes for an element"""
