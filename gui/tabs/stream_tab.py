@@ -194,7 +194,7 @@ class StreamTab(QWidget):
 
     def populate_sensor_datalogger(self):
         """Populate sensor and datalogger combo boxes"""
-        print("\n=== Populating Combos Debug ===")
+        print("\n=== Populating Sensor/Datalogger Combos Debug ===")
         
         if not self.inventory_model:
             print("No inventory model available!")
@@ -203,48 +203,43 @@ class StreamTab(QWidget):
         self.sensor_combo.clear()
         self.datalogger_combo.clear()
         
-        # Debug: Get all streams to collect used serial numbers
-        all_sensor_serials = set()
-        all_datalogger_serials = set()
-        
-        print("Collecting serial numbers from streams...")
-        for element in self.inventory_model.get_all_streams():
-            sensor_serial = self.inventory_model.xml_handler.get_element_text(element, 'sensorSerialNumber')
-            datalogger_serial = self.inventory_model.xml_handler.get_element_text(element, 'dataloggerSerialNumber')
-            
-            if sensor_serial:
-                all_sensor_serials.add(sensor_serial)
-                print(f"Found sensor serial: {sensor_serial}")
-            if datalogger_serial:
-                all_datalogger_serials.add(datalogger_serial)
-                print(f"Found datalogger serial: {datalogger_serial}")
-        
         # Add empty options
         self.sensor_combo.addItem("Select Sensor...", None)
         self.datalogger_combo.addItem("Select Datalogger...", None)
         
-        # Add sensor serials to combo
-        print("\nPopulating sensor combo...")
-        for serial in sorted(all_sensor_serials):
-            display_text = f"Sensor {serial}"
-            print(f"Adding sensor: {display_text} with value {serial}")
-            self.sensor_combo.addItem(display_text, serial)
+        # Get all sensors
+        print("\nLoading sensors...")
+        for sensor in self.inventory_model.get_sensors():
+            name = sensor.get('name', '')
+            serial = self.inventory_model.xml_handler.get_element_text(sensor, 'serialNumber')
+            model = self.inventory_model.xml_handler.get_element_text(sensor, 'model') or ''
+            manufacturer = self.inventory_model.xml_handler.get_element_text(sensor, 'manufacturer') or ''
+            
+            if serial:  # Only add if has serial number
+                display_text = f"{manufacturer} {model} - {name} ({serial})"
+                print(f"Adding sensor: {display_text}")
+                self.sensor_combo.addItem(display_text, serial)
         
-        # Add datalogger serials to combo
-        print("\nPopulating datalogger combo...")
-        for serial in sorted(all_datalogger_serials):
-            display_text = f"Datalogger {serial}"
-            print(f"Adding datalogger: {display_text} with value {serial}")
-            self.datalogger_combo.addItem(display_text, serial)
-        
+        # Get all dataloggers
+        print("\nLoading dataloggers...")
+        for datalogger in self.inventory_model.get_dataloggers():
+            name = datalogger.get('name', '')
+            serial = self.inventory_model.xml_handler.get_element_text(datalogger, 'serialNumber')
+            model = self.inventory_model.xml_handler.get_element_text(datalogger, 'model') or ''
+            manufacturer = self.inventory_model.xml_handler.get_element_text(datalogger, 'manufacturer') or ''
+            
+            if serial:  # Only add if has serial number
+                display_text = f"{manufacturer} {model} - {name} ({serial})"
+                print(f"Adding datalogger: {display_text}")
+                self.datalogger_combo.addItem(display_text, serial)
+                
         print("=======================\n")
 
     def set_current_element(self, element: Optional[ET.Element]):
         """Set current stream element and populate fields"""
         print("\n=== Stream Tab Debug ===")
-        print(f"Setting current element: {element is not None}")
-        print("========================\n")
-
+        print(f"Setting stream element: {element is not None}")
+        
         self.current_element = element
         if element is None:
             return
@@ -264,28 +259,28 @@ class StreamTab(QWidget):
         self.stream_sampleRateDenominator.setText(data.sampleRateDenominator)
         self.stream_gainFrequency.setText(data.gainFrequency)
         self.stream_gainUnit.setText(data.gainUnit)
+        self.stream_flags.setText(data.flags)
+        
+        print(f"\nSetting sensor serial: {data.sensor_serialnumber}")
+        print(f"Setting datalogger serial: {data.datalogger_serialnumber}")
+        
+        # Update display fields
         self.sensor_serial_display.setText(data.sensor_serialnumber or "")
         self.datalogger_serial_display.setText(data.datalogger_serialnumber or "")
-        self.stream_flags.setText(data.flags)
-
-        print(f"Stream data loaded:")
-        print(f"- Code: {data.code}")
-        print(f"- Sensor Serial: {data.sensor_serialnumber}")
-        print(f"- Datalogger Serial: {data.datalogger_serialnumber}")
-       
+        
         # Set combo box selections for sensor and datalogger
-        sensor_index = self.sensor_combo.findData(data.sensor_serialnumber)
-        if sensor_index >= 0:
-            self.sensor_combo.setCurrentIndex(sensor_index)
-            
-        datalogger_index = self.datalogger_combo.findData(data.datalogger_serialnumber)
-        if datalogger_index >= 0:
-            self.datalogger_combo.setCurrentIndex(datalogger_index)
-
-        print(f"Combo box indices - Sensor: {sensor_index}, Datalogger: {datalogger_index}")
-        print("=======================\n")
-
-            
+        if data.sensor_serialnumber:
+            sensor_index = self.sensor_combo.findData(data.sensor_serialnumber)
+            print(f"Found sensor index: {sensor_index}")
+            if sensor_index >= 0:
+                self.sensor_combo.setCurrentIndex(sensor_index)
+                
+        if data.datalogger_serialnumber:
+            datalogger_index = self.datalogger_combo.findData(data.datalogger_serialnumber)
+            print(f"Found datalogger index: {datalogger_index}")
+            if datalogger_index >= 0:
+                self.datalogger_combo.setCurrentIndex(datalogger_index)
+                
         self.status_label.setText("")
 
         
@@ -323,6 +318,7 @@ class StreamTab(QWidget):
             'sensorSerialNumber': self.sensor_combo.currentData(),
             'dataloggerSerialNumber': self.datalogger_combo.currentData()
         }
+
 
         
     def validate_all(self) -> bool:
@@ -454,6 +450,10 @@ class StreamTab(QWidget):
             
         try:
             data = self.get_current_data()
+            # Remove sampleRate if present in data to prevent the error
+            if 'sampleRate' in data:
+                del data['sampleRate']
+                
             if self.inventory_model.update_stream(self.current_element, data):
                 self.status_label.setText("Stream updated successfully")
                 self.status_label.setStyleSheet("QLabel { color: #5cb85c; }")

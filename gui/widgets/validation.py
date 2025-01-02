@@ -1,4 +1,3 @@
-# gui/widgets/validation.py
 from PyQt5.QtWidgets import QLineEdit
 from typing import Optional, Callable, Union
 from core.datetime_validation import DateTimeValidator
@@ -12,15 +11,56 @@ class ValidationLineEdit(QLineEdit):
                  parent: Optional[QLineEdit] = None):
         super().__init__(parent)
         self.validator_type = None
+        self.required = required
+        
+        # Handle datetime validator specially
         if isinstance(validator, str) and validator == 'datetime':
             self.validator = DateTimeValidator.validate
             self.validator_type = 'datetime'
         else:
             self.validator = validator
-        self.required = required
+            
+        # Connect signals
         self.textChanged.connect(self.validate)
         self.editingFinished.connect(self.on_editing_finished)
         self.apply_default_style()
+        
+    def validate(self) -> bool:
+        """Validate current text and handle datetime conversion"""
+        text = self.text().strip()
+        
+        # Check required field
+        if not text and self.required:
+            self.apply_error_style()
+            return False
+            
+        # Skip validation if empty and not required
+        if not text and not self.required:
+            self.apply_default_style()
+            return True
+            
+        # Handle validation
+        if self.validator:
+            try:
+                if not self.validator(text):
+                    self.apply_error_style()
+                    return False
+                    
+                # Handle datetime conversion
+                if self.validator_type == 'datetime' and text:
+                    converted = DateTimeValidator.convert_to_seiscomp_format(text)
+                    if converted and converted != text:
+                        # Block signals to prevent recursive validation
+                        self.blockSignals(True)
+                        self.setText(converted)
+                        self.blockSignals(False)
+            except Exception as e:
+                print(f"Validation error: {str(e)}")  # Debug logging
+                self.apply_error_style()
+                return False
+                
+        self.apply_default_style()
+        return True
         
     def apply_default_style(self):
         """Apply default styling"""
@@ -50,29 +90,6 @@ class ValidationLineEdit(QLineEdit):
             }
         """)
         
-    def validate(self) -> bool:
-        """Validate current text"""
-        if not self.text() and self.required:
-            self.apply_error_style()
-            return False
-            
-        if self.validator and self.text():
-            try:
-                if not self.validator(self.text()):
-                    self.apply_error_style()
-                    return False
-                # For datetime fields, convert to standard format
-                elif self.validator_type == 'datetime' and self.text():
-                    converted = DateTimeValidator.convert_to_seiscomp_format(self.text())
-                    if converted and converted != self.text():
-                        self.setText(converted)
-            except Exception:
-                self.apply_error_style()
-                return False
-                
-        self.apply_default_style()
-        return True
-        
     def on_editing_finished(self):
         """Handle editing finished event"""
         if self.parent() and hasattr(self.parent(), 'handle_editing_finished'):
@@ -81,4 +98,4 @@ class ValidationLineEdit(QLineEdit):
     def validate_and_get(self) -> tuple[bool, str]:
         """Validate and return current text"""
         is_valid = self.validate()
-        return is_valid, self.text()
+        return is_valid, self.text().strip()

@@ -236,12 +236,13 @@ class InventoryModel:
             'azimuth': data['azimuth'],
             'dip': data['dip'],
             'gain': data['gain'],
-            'sampleRate': data['sampleRate'],
+            'sampleRateNumerator': data['sampleRateNumerator'],
+            'sampleRateDenominator': data['sampleRateDenominator'],
             'gainFrequency': data['gainFrequency'],
             'gainUnit': data['gainUnit'],
-            'sensorSerialNumber': data['sensor_serialnumber'],
-            'dataloggerSerialNumber': data['datalogger_serialnumber'],
-            'flags': data['flags']
+            'flags': data['flags'],
+            'sensorSerialNumber': data['sensorSerialNumber'],
+            'dataloggerSerialNumber': data['dataloggerSerialNumber']
         }
         
         for field, value in fields.items():
