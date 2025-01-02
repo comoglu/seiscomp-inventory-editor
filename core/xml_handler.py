@@ -4,16 +4,30 @@ from pathlib import Path
 import re
 from typing import Dict, Optional, Tuple, List
 import logging
+from .reference_manager import ReferenceManager
 
 class XMLHandler:
     """Handles XML file operations for SeisComP inventory"""
     
+    # Define supported schema versions and their namespaces
+    SUPPORTED_SCHEMAS = {
+        '0.10': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10',
+        '0.11': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.11',
+        '0.12': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.12',
+        '0.13': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.13'
+    }
+    
     def __init__(self):
-        self.ns = {'sc3': 'http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.12'}
+        self.ref_manager = ReferenceManager()
         self.current_file: Optional[str] = None
         self.tree: Optional[ET.ElementTree] = None
         self.root: Optional[ET.Element] = None
         self.modified_elements: Dict[str, Dict[str, str]] = {}
+        self.logger = logging.getLogger('XMLHandler')
+        
+        # Initialize with default namespace
+        self.ns = {'sc3': self.SUPPORTED_SCHEMAS['0.12']}
+        self.schema_version = '0.12'
         
     def load_file(self, filename: str) -> Tuple[bool, str]:
         """
@@ -26,31 +40,27 @@ class XMLHandler:
             Tuple of (success: bool, message: str)
         """
         try:
-            tree = ET.parse(filename)
-            root = tree.getroot()
+            self.tree = ET.parse(filename)
+            self.root = self.tree.getroot()
             
-            if not self._validate_xml_structure(root):
+            # Extract namespaces and validate structure
+            if not self._validate_xml_structure(self.root):
                 return False, "Invalid SeisComP inventory structure"
                 
             self.current_file = filename
-            self.tree = tree
-            self.root = root
             self.modified_elements = {}
+            
+            # Register components for reference tracking
+            self._register_components()
             
             return True, "File loaded successfully"
             
         except ET.ParseError as e:
             return False, f"XML parse error: {str(e)}"
         except Exception as e:
+            self.logger.error(f"Error loading file: {str(e)}")
             return False, f"Error loading file: {str(e)}"
             
-    def _validate_xml_structure(self, root: ET.Element) -> bool:
-        """Validate basic SeisComP XML structure"""
-        if root.tag != f'{{{self.ns["sc3"]}}}seiscomp':
-            return False
-        inventory = root.find('sc3:Inventory', self.ns)
-        return inventory is not None
-        
     def save_file(self) -> Tuple[bool, str]:
         """Save XML while preserving formatting"""
         if not (self.current_file and self.tree):
@@ -82,7 +92,61 @@ class XMLHandler:
             if backup_path.exists():
                 backup_path.rename(current_path)
             return False, f"Error saving file: {str(e)}"
-    
+            
+    def _extract_namespaces(self, root: ET.Element) -> None:
+        """Extract and register namespaces from root element"""
+        # Keep track of all found namespaces
+        found_namespaces = {}
+        
+        # Look for schema namespace in root tag
+        match = re.match(r'\{(.+?)\}', root.tag)
+        if match:
+            found_namespaces['root_tag'] = match.group(1)
+        
+        # Get namespaces from xmlns attributes
+        for key, value in root.attrib.items():
+            if key.startswith('xmlns:'):
+                prefix = key.split(':')[1]
+                found_namespaces[prefix] = value
+            elif key == 'xmlns':
+                found_namespaces['default'] = value
+                
+        # Try to find a matching supported schema
+        for ns_value in found_namespaces.values():
+            for version, schema_ns in self.SUPPORTED_SCHEMAS.items():
+                if schema_ns in ns_value:
+                    self.schema_version = version
+                    self.ns = {'sc3': schema_ns}
+                    return
+
+    def _validate_xml_structure(self, root: ET.Element) -> bool:
+        """Validate XML structure and detect schema version"""
+        # Extract and set namespaces
+        self._extract_namespaces(root)
+        
+        # Try with current namespace
+        if self._check_inventory_exists(root):
+            return True
+            
+        # Try all supported schemas
+        for version, ns in self.SUPPORTED_SCHEMAS.items():
+            test_ns = {'sc3': ns}
+            if self._check_inventory_exists(root, test_ns):
+                self.schema_version = version
+                self.ns = test_ns
+                return True
+                
+        return False
+        
+    def _check_inventory_exists(self, root: ET.Element, namespace: Optional[Dict] = None) -> bool:
+        """Check if inventory element exists using given namespace"""
+        ns = namespace if namespace is not None else self.ns
+        try:
+            inventory = root.find('sc3:Inventory', ns)
+            return inventory is not None
+        except ET.ParseError:
+            return False
+
     def _apply_changes(self, content: str) -> str:
         """Apply tracked changes to XML content"""
         for element_id, changes in self.modified_elements.items():
@@ -90,9 +154,7 @@ class XMLHandler:
             if element_start != -1:
                 # Find element boundaries
                 block_start = content.rfind('<', 0, element_start)
-                block_end = content.find('</stream>', element_start)
-                if block_end == -1:
-                    block_end = content.find('>', element_start) + 1
+                block_end = content.find('>', element_start) + 1
                 
                 # Get element content and indentation
                 element_content = content[block_start:block_end]
@@ -113,7 +175,7 @@ class XMLHandler:
     
     def _modify_element_content(self, content: str, changes: Dict[str, str], indent: str) -> str:
         """Modify individual element content with changes"""
-        for field, new_value in changes.items():
+        for field, value in changes.items():
             field_tag = f"<{field}>"
             field_start = content.find(field_tag)
             
@@ -122,32 +184,25 @@ class XMLHandler:
                 field_end = content.find(f"</{field}>", field_start)
                 if field_end != -1:
                     old_content = content[field_start:field_end + len(f"</{field}>")]
-                    new_content = f"<{field}>{new_value}</{field}>"
+                    new_content = f"<{field}>{value}</{field}>"
                     content = content.replace(old_content, new_content)
             else:
                 # Add new field
                 insert_pos = self._find_insert_position(content)
-                new_field = f"\n{indent}<{field}>{new_value}</{field}>"
+                new_field = f"\n{indent}<{field}>{value}</{field}>"
                 content = content[:insert_pos] + new_field + content[insert_pos:]
         
         return content
     
     def _find_insert_position(self, content: str) -> int:
         """Find position to insert new field"""
-        # Try to find last closing tag
         for tag in ['</shared>', '/>', '</stream>', '</sensorLocation>', 
                    '</station>', '</network>']:
             pos = content.rfind(tag)
             if pos != -1:
-                return pos + len(tag)
+                return pos
         return len(content)
-    
-    def track_changes(self, element_id: str, changes: Dict[str, str]):
-        """Track changes for an element"""
-        if element_id not in self.modified_elements:
-            self.modified_elements[element_id] = {}
-        self.modified_elements[element_id].update(changes)
-    
+
     def get_networks(self) -> List[ET.Element]:
         """Get all network elements"""
         if self.root is None:
@@ -177,14 +232,12 @@ class XMLHandler:
         if self.root is None:
             return []
         return self.root.findall('.//sc3:datalogger', self.ns)
-    
+
     def get_element_text(self, element: ET.Element, tag: str, default: str = '') -> str:
         """Get element text with namespace"""
         elem = element.find(f'sc3:{tag}', self.ns)
-        value = elem.text if elem is not None and elem.text is not None else default
-        print(f"Getting element text - Tag: {tag}, Value: {value}")
-        return value
-    
+        return elem.text if elem is not None and elem.text is not None else default
+
     def update_element_text(self, element: ET.Element, tag: str, value: str) -> bool:
         """Update element text and track changes"""
         if not element.get('publicID'):
@@ -208,26 +261,62 @@ class XMLHandler:
             
         return False
 
+    def track_changes(self, element_id: str, changes: Dict[str, str]) -> None:
+        """Track changes for an element"""
+        if element_id not in self.modified_elements:
+            self.modified_elements[element_id] = {}
+        self.modified_elements[element_id].update(changes)
+
+    def _register_components(self) -> None:
+        """Register all sensors and dataloggers"""
+        try:
+            # Register sensors
+            for sensor in self.get_sensors():
+                serial = self.get_element_text(sensor, 'serialNumber')
+                if serial:  # Only register if has serial number
+                    self.ref_manager.register_component(sensor, 'sensor')
+                else:
+                    self.logger.debug(f"Sensor without serial number: {sensor.get('name', '')}")
+                    
+            # Register dataloggers
+            for datalogger in self.get_dataloggers():
+                serial = self.get_element_text(datalogger, 'serialNumber')
+                if serial:  # Only register if has serial number
+                    self.ref_manager.register_component(datalogger, 'datalogger')
+                else:
+                    self.logger.debug(f"Datalogger without serial number: {datalogger.get('name', '')}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error registering components: {str(e)}")
+
     def link_sensor_to_stream(self, stream: ET.Element, sensor: ET.Element) -> bool:
         """Link sensor to stream"""
-        if not (stream.get('publicID') and sensor.get('publicID')):
-            return False
+        try:
+            if not sensor.get('publicID'):
+                return False
+                
+            serial = self.get_element_text(sensor, 'serialNumber')
+            if not serial:
+                return False
+                
+            return self.update_element_text(stream, 'sensorSerialNumber', serial)
             
-        serial = self.get_element_text(sensor, 'serialNumber')
-        if not serial:
+        except Exception as e:
+            self.logger.error(f"Error linking sensor to stream: {str(e)}")
             return False
-            
-        self.update_element_text(stream, 'sensorSerialNumber', serial)
-        return True
         
     def link_datalogger_to_stream(self, stream: ET.Element, datalogger: ET.Element) -> bool:
         """Link datalogger to stream"""
-        if not (stream.get('publicID') and datalogger.get('publicID')):
-            return False
+        try:
+            if not datalogger.get('publicID'):
+                return False
+                
+            serial = self.get_element_text(datalogger, 'serialNumber')
+            if not serial:
+                return False
+                
+            return self.update_element_text(stream, 'dataloggerSerialNumber', serial)
             
-        serial = self.get_element_text(datalogger, 'serialNumber')
-        if not serial:
+        except Exception as e:
+            self.logger.error(f"Error linking datalogger to stream: {str(e)}")
             return False
-            
-        self.update_element_text(stream, 'dataloggerSerialNumber', serial)
-        return True
