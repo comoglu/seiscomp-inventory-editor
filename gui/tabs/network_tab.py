@@ -1,11 +1,15 @@
 # gui/tabs/network_tab.py
 from PyQt5.QtWidgets import (QWidget, QFormLayout, QGroupBox, QPushButton, 
                            QVBoxLayout, QLabel)
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, QUrl
+from PyQt5.QtGui import QDesktopServices
 from gui.widgets.validation import ValidationLineEdit
 import re
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 from xml.etree import ElementTree as ET
+import folium
+import os
+import tempfile
 from core.datetime_validation import DateTimeValidator
 
 class NetworkTab(QWidget):
@@ -17,6 +21,7 @@ class NetworkTab(QWidget):
         super().__init__(parent)
         self.current_element = None
         self.inventory_model = None
+        self.map_file = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -74,6 +79,27 @@ class NetworkTab(QWidget):
         
         network_group.setLayout(network_layout)
         layout.addWidget(network_group)
+
+        # Add map button
+        self.view_map_button = QPushButton("View Network Stations on Map")
+        self.view_map_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                margin-top: 10px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+        """)
+        self.view_map_button.clicked.connect(self.show_map)
+        layout.addWidget(self.view_map_button)
         
         # Add update button
         self.update_button = QPushButton("Update Network")
@@ -104,7 +130,94 @@ class NetworkTab(QWidget):
             }
         """)
         layout.addWidget(self.status_label)
-        
+
+    def get_network_stations(self) -> List[Tuple[str, str, float, float]]:
+        """Get all stations in the current network"""
+        stations = []
+        if self.current_element and self.inventory_model:
+            for station in self.inventory_model.xml_handler.get_stations(self.current_element):
+                data = self.inventory_model.get_station_data(station)
+                if data.latitude and data.longitude:
+                    try:
+                        lat = float(data.latitude)
+                        lon = float(data.longitude)
+                        name = data.name or data.code
+                        stations.append((data.code, name, lat, lon))
+                    except ValueError:
+                        continue
+        return stations
+
+    def create_map(self, stations: List[Tuple[str, str, float, float]]):
+        """Create a map with all station markers"""
+        try:
+            if not stations:
+                return False
+
+            # Calculate center point as average of all stations
+            center_lat = sum(s[2] for s in stations) / len(stations)
+            center_lon = sum(s[3] for s in stations) / len(stations)
+
+            # Create map centered at the average position
+            m = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=6,
+                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                attr='Google Maps'
+            )
+
+            # Add markers for all stations
+            station_group = folium.FeatureGroup(name="Stations")
+            for code, name, lat, lon in stations:
+                folium.Marker(
+                    [lat, lon],
+                    popup=f"{code}: {name}",
+                    tooltip=code,
+                    icon=folium.Icon(color='red', icon='info-sign')
+                ).add_to(station_group)
+
+            station_group.add_to(m)
+
+            # Add layer control
+            folium.LayerControl().add_to(m)
+
+            # Fit bounds to show all markers
+            if len(stations) > 1:
+                bounds = [[s[2], s[3]] for s in stations]
+                m.fit_bounds(bounds)
+
+            # Save to temporary file
+            if self.map_file:
+                try:
+                    os.unlink(self.map_file)
+                except:
+                    pass
+
+            fd, self.map_file = tempfile.mkstemp(suffix='.html')
+            os.close(fd)
+            m.save(self.map_file)
+
+            return True
+        except Exception as e:
+            print(f"Error creating map: {str(e)}")
+            return False
+
+    def show_map(self):
+        """Show the map in default web browser"""
+        stations = self.get_network_stations()
+        if stations:
+            try:
+                if self.create_map(stations):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(self.map_file))
+                else:
+                    self.status_label.setText("Error creating map")
+                    self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+            except Exception as e:
+                self.status_label.setText(f"Error showing map: {str(e)}")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+        else:
+            self.status_label.setText("No stations with coordinates found")
+            self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+
     def set_inventory_model(self, model):
         """Set the inventory model reference"""
         self.inventory_model = model
@@ -149,44 +262,6 @@ class NetworkTab(QWidget):
             'shared': self.network_shared.text().lower()
         }
         
-    @staticmethod
-    def validate_datetime(text: str) -> bool:
-        """Validate datetime string format"""
-        return DateTimeValidator.validate(text)
-        
-        # # Basic datetime format validation
-        # datetime_pattern = r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$'
-        # if not re.match(datetime_pattern, text):
-        #     return False
-            
-        # try:
-        #     # Split into date and optional time parts
-        #     parts = text.split()
-        #     date_parts = parts[0].split('-')
-            
-        #     # Validate year, month, day
-        #     year = int(date_parts[0])
-        #     month = int(date_parts[1])
-        #     day = int(date_parts[2])
-            
-        #     if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-        #         return False
-                
-        #     # Validate time if present
-        #     if len(parts) > 1:
-        #         time_parts = parts[1].split(':')
-        #         hour = int(time_parts[0])
-        #         minute = int(time_parts[1])
-        #         second = int(time_parts[2])
-                
-        #         if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-        #             return False
-                    
-        #     return True
-            
-        # except (ValueError, IndexError):
-        #     return False
-        
     def validate_all(self) -> bool:
         """Validate all input fields"""
         return all([
@@ -225,3 +300,11 @@ class NetworkTab(QWidget):
         """Called when editing is finished in any field"""
         if self.current_element:
             self.update_network()
+
+    def __del__(self):
+        """Cleanup temporary map files"""
+        if self.map_file and os.path.exists(self.map_file):
+            try:
+                os.unlink(self.map_file)
+            except:
+                pass

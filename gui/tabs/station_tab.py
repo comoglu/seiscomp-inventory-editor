@@ -1,11 +1,16 @@
 # gui/tabs/station_tab.py
 from PyQt5.QtWidgets import (QWidget, QFormLayout, QGroupBox, QPushButton, 
-                           QVBoxLayout, QLabel)
+                           QVBoxLayout, QLabel, QApplication)
 from PyQt5.QtCore import pyqtSignal
 from gui.widgets.validation import ValidationLineEdit
 import re
 from typing import Optional, Dict
 from xml.etree import ElementTree as ET
+import folium
+import os
+import tempfile
+from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QDesktopServices
 
 class StationTab(QWidget):
     """Tab for editing station information"""
@@ -16,6 +21,7 @@ class StationTab(QWidget):
         super().__init__(parent)
         self.current_element = None
         self.inventory_model = None
+        self.map_file = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -78,6 +84,27 @@ class StationTab(QWidget):
         
         station_group.setLayout(station_layout)
         layout.addWidget(station_group)
+
+        # Add map button
+        self.view_map_button = QPushButton("View Station Location on Map")
+        self.view_map_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                margin-top: 10px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+        """)
+        self.view_map_button.clicked.connect(self.show_map)
+        layout.addWidget(self.view_map_button)
         
         # Add update button
         self.update_button = QPushButton("Update Station")
@@ -108,7 +135,77 @@ class StationTab(QWidget):
             }
         """)
         layout.addWidget(self.status_label)
-        
+
+        # Connect coordinate fields to map updates
+        self.station_lat.editingFinished.connect(self.update_map_location)
+        self.station_lon.editingFinished.connect(self.update_map_location)
+
+    def create_map(self, lat, lon, station_name):
+        """Create a map with station marker"""
+        try:
+            # Create a map centered at the station
+            m = folium.Map(
+                location=[float(lat), float(lon)],
+                zoom_start=10,
+                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                attr='Google Maps'
+            )
+
+            # Add marker for station
+            folium.Marker(
+                [float(lat), float(lon)],
+                popup=station_name or 'Station Location',
+                icon=folium.Icon(color='red', icon='info-sign')
+            ).add_to(m)
+
+            # Save to temporary file
+            if self.map_file:
+                try:
+                    os.unlink(self.map_file)
+                except:
+                    pass
+
+            fd, self.map_file = tempfile.mkstemp(suffix='.html')
+            os.close(fd)
+            m.save(self.map_file)
+
+            return True
+        except Exception as e:
+            print(f"Error creating map: {str(e)}")
+            return False
+
+    def show_map(self):
+        """Show the map in default web browser"""
+        lat = self.station_lat.text()
+        lon = self.station_lon.text()
+        station_name = self.station_name.text() or self.station_code.text()
+
+        if lat and lon:
+            try:
+                if self.create_map(lat, lon, station_name):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(self.map_file))
+                else:
+                    self.status_label.setText("Error creating map")
+                    self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+            except Exception as e:
+                self.status_label.setText(f"Error showing map: {str(e)}")
+                self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+        else:
+            self.status_label.setText("Please enter valid coordinates")
+            self.status_label.setStyleSheet("QLabel { color: #d9534f; }")
+
+    def update_map_location(self):
+        """Update map when coordinates change"""
+        lat = self.station_lat.text()
+        lon = self.station_lon.text()
+        if lat and lon:
+            try:
+                float(lat)  # Validate coordinates
+                float(lon)
+                # Map will be updated when "View Map" is clicked
+            except ValueError:
+                pass
+
     def set_inventory_model(self, model):
         """Set the inventory model reference"""
         self.inventory_model = model
@@ -136,7 +233,7 @@ class StationTab(QWidget):
         self.station_place.setText(data.place)
         
         self.status_label.setText("")
-        
+
     def get_current_data(self) -> Dict[str, str]:
         """Get current field values"""
         return {
@@ -152,25 +249,7 @@ class StationTab(QWidget):
             'country': self.station_country.text(),
             'place': self.station_place.text()
         }
-        
-    @staticmethod
-    def validate_datetime(self, text: str) -> bool:
-        """Validate datetime string format"""
-        from core.datetime_validation import DateTimeValidator
-        
-        if DateTimeValidator.validate(text):
-            # If valid, automatically convert to SeisComP format
-            if text:
-                converted = DateTimeValidator.convert_to_seiscomp_format(text)
-                if converted and converted != text:
-                    # Update the field with converted format
-                    sender = self.sender()
-                    if sender:
-                        sender.setText(converted)
-            return True
-            
-        return False
-            
+
     def validate_datetime(self, text: str) -> bool:
         """Validate datetime string format"""
         from core.datetime_validation import DateTimeValidator
@@ -215,7 +294,6 @@ class StationTab(QWidget):
         except ValueError:
             return False
 
-
     def validate_all(self) -> bool:
         """Validate all input fields"""
         return all([
@@ -254,3 +332,11 @@ class StationTab(QWidget):
         """Called when editing is finished in any field"""
         if self.current_element:
             self.update_station()
+
+    def __del__(self):
+        """Cleanup temporary map files"""
+        if self.map_file and os.path.exists(self.map_file):
+            try:
+                os.unlink(self.map_file)
+            except:
+                pass
